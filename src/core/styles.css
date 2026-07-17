@@ -275,6 +275,32 @@
   margin-top: .18rem;
 }
 
+.pdp-change-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin: .5rem 0 .2rem;
+}
+
+.pdp-change-image-link {
+  display: block;
+  cursor: zoom-in;
+}
+
+.pdp-change-image {
+  display: block;
+  /* Show at native/forum size — only cap width so it can't overflow the page. */
+  max-width: 100%;
+  height: auto;
+  border: 1px solid rgba(154, 163, 172, .3);
+  border-radius: 2px;
+  transition: border-color .12s ease;
+}
+
+.pdp-change-image-link:hover .pdp-change-image {
+  border-color: rgba(241, 70, 46, .72);
+}
+
 .pdp-num {
   color: #d0dae0;
   font-weight: 800;
@@ -530,6 +556,22 @@
 .pdp-wiki-status-error {
   border-color: rgba(219, 80, 54, .78);
   color: #f0b9ad;
+}
+
+.pdp-wiki-status-challenge {
+  pointer-events: auto;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.4;
+}
+
+.pdp-wiki-status-challenge a {
+  display: inline-block;
+  margin-top: .2rem;
+  color: #ecd9b0;
+  text-decoration: underline;
+  text-underline-offset: .14em;
 }
 
 .pdp-changes a {

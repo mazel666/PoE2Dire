@@ -147,6 +147,7 @@ function userscriptHeader() {
     `// @version     ${packageJson.version}`,
     "// @description Render Path of Exile patch notes in a Dota-style format.",
     "// @match       https://www.pathofexile.com/forum/*",
+    "// @match       https://jp.pathofexile.com/forum/*",
     "// @run-at      document-idle",
     "// @grant       GM_xmlhttpRequest",
     "// @grant       GM_registerMenuCommand",

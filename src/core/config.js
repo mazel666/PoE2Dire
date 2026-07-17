@@ -13,15 +13,23 @@
     cache: {
       namespacePrefix: "PoE2DireCache",
       namespace: "PoE2DireCache-10-07-2026",
-      // 4 months
-      hitTtlMs: 120 * 24 * 60 * 60 * 1000,
+      // 1 year — a storage cleanup ceiling, not a freshness guarantee. Freshness for
+      // revision-tracked icons (file-based lookups) is enforced by revalidateAfterMs
+      // below; icons without a tracked revision just ride on this TTL alone.
+      hitTtlMs: 365 * 24 * 60 * 60 * 1000,
       // 7 days
       missTtlMs: 7 * 24 * 60 * 60 * 1000,
+      // How long a revision-tracked icon is trusted before we cheaply re-check its
+      // wiki "touched" timestamp and refetch if the underlying file actually changed.
+      revalidateAfterMs: 6 * 60 * 60 * 1000,
     },
     network: {
       retries: 2,
       retryDelayMs: 650,
-      minRequestIntervalMs: 250,
+      // Floor is >= 1s on purpose — spread the extra as random jitter (below),
+      // not as a shorter floor, so we never dip under 1s between requests.
+      minRequestIntervalMs: 1000,
+      minRequestIntervalJitterMs: 400,
       maxRetryDelayMs: 30000,
       challengeCooldownMs: 60000,
       maxCooldownMs: 120000,

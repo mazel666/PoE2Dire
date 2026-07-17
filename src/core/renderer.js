@@ -371,11 +371,26 @@
     }
 
     pill.className = status.modifier ? `pdp-wiki-status ${status.modifier}` : "pdp-wiki-status";
-    pill.textContent = status.text;
+    pill.replaceChildren(status.text);
+    if (status.linkUrl) {
+      const link = el("a", "", status.linkLabel);
+      link.href = status.linkUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      pill.append(" ", link);
+    }
   }
 
   function wikiStatusContent() {
     if (state.retryWaitMs > 1500) {
+      if (state.wikiCooldownReason === "challenge") {
+        return {
+          text: "Wiki wants to verify you're human before it'll respond.",
+          modifier: "pdp-wiki-status-wait pdp-wiki-status-challenge",
+          linkUrl: wikiOriginForStatus(),
+          linkLabel: "Open the wiki to verify →",
+        };
+      }
       return {
         text: `Wiki is busy, retrying in ${Math.ceil(state.retryWaitMs / 1000)}s…`,
         modifier: "pdp-wiki-status-wait",
@@ -398,6 +413,20 @@
     }
 
     return null;
+  }
+
+  // A Cloudflare interactive challenge can't be solved by our background fetches —
+  // there's no page rendered, no JS challenge executed, nothing for a checkbox to
+  // click. Only a human opening the wiki directly can clear it (which then leaves a
+  // cf_clearance cookie the browser will send on our behalf afterwards).
+  function wikiOriginForStatus() {
+    const endpoint = state.wikiEndpoints?.[0];
+    if (!endpoint) return null;
+    try {
+      return new URL(endpoint.api).origin + "/";
+    } catch (error) {
+      return null;
+    }
   }
 
   function updatePatchIcons(doc, patch) {
@@ -727,6 +756,7 @@
   function renderChangeItem(doc, item) {
     const text = changeText(item);
     const links = typeof item === "string" ? [] : item?.links || [];
+    const images = typeof item === "string" ? [] : item?.images || [];
     const fragment = doc.createDocumentFragment();
 
     splitByLinks(text, links).forEach((segment) => {
@@ -741,7 +771,30 @@
       }
     });
 
+    if (images.length) {
+      const gallery = el("div", "pdp-change-images", images.map((src) => renderChangeImage(doc, src)));
+      fragment.append(gallery);
+    }
+
     return fragment;
+  }
+
+  function renderChangeImage(doc, src) {
+    // These are reference screenshots (e.g. reshuffled notable layouts), often
+    // too dense to read at feed width — link to the original so it opens
+    // full-size in a new tab instead of only ever showing the shrunk copy.
+    const link = el("a", "pdp-change-image-link");
+    link.href = src;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+
+    const picture = el("img", "pdp-change-image");
+    picture.src = src;
+    picture.loading = "lazy";
+    picture.alt = "";
+    link.append(picture);
+
+    return link;
   }
 
   function splitByLinks(text, links) {

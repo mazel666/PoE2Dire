@@ -8,10 +8,15 @@
     ".forum-table-container .content",
   ];
 
+  const ALLOWED_FORUM_ORIGINS = new Set([
+    "https://www.pathofexile.com",
+    "https://jp.pathofexile.com",
+  ]);
+
   function isAllowedForumUrl(url) {
     try {
       const parsed = new URL(url);
-      return parsed.origin === "https://www.pathofexile.com" && parsed.pathname.startsWith("/forum/");
+      return ALLOWED_FORUM_ORIGINS.has(parsed.origin) && parsed.pathname.startsWith("/forum/");
     } catch (error) {
       return false;
     }
@@ -138,7 +143,10 @@
     const result = [];
     for (const token of tokens) {
       const last = result[result.length - 1];
-      if (last && last.type === token.type && last.text === token.text) continue;
+      // Images almost always have empty alt text, so comparing by .text here
+      // collapsed every run of distinct screenshots down to just the first one.
+      // Compare by the actual image URL instead so real duplicates still merge.
+      if (last && last.type === token.type && tokenIdentity(last) === tokenIdentity(token)) continue;
       if (last && last.type === "text" && token.type === "text") {
         last.text = joinTextTokens(last.text, token.text);
         last.links = (last.links || []).concat(token.links || []);
@@ -147,6 +155,10 @@
       result.push(token);
     }
     return result;
+  }
+
+  function tokenIdentity(token) {
+    return token.type === "image" ? token.image : token.text;
   }
 
   function joinTextTokens(left, right) {

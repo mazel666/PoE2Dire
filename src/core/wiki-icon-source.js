@@ -1,4 +1,5 @@
   const WIKI_PLACEHOLDER_IMAGE = /Questionmark|Help\.svg|Level_up_icon/i;
+  const MAX_ICON_COOLDOWN_RETRIES = 3;
 
   async function queryWikiIconSource(endpoint, jobs, onResult) {
     const found = new Map();
@@ -9,7 +10,15 @@
     const remainingJobs = jobs.filter((job) => !found.has(job.key));
     const existingTitles = await queryExistingTitles(endpoint, remainingJobs);
 
-    await mapWithConcurrency(remainingJobs, CONFIG.wikiLookupConcurrency, async (job) => {
+    await mapWithConcurrency(remainingJobs, CONFIG.wikiLookupConcurrency, (job) =>
+      queryWikiIconWithCooldownRetry(endpoint, job, existingTitles, found, failed, onResult)
+    );
+
+    return { found, failed };
+  }
+
+  async function queryWikiIconWithCooldownRetry(endpoint, job, existingTitles, found, failed, onResult) {
+    for (let attempt = 0; attempt <= MAX_ICON_COOLDOWN_RETRIES; attempt += 1) {
       try {
         const image = await queryWikiIcon(endpoint, job, existingTitles);
         if (image) {
@@ -18,13 +27,23 @@
         } else if (onResult) {
           onResult(job, null, false);
         }
+        return;
       } catch (error) {
+        // A wiki-wide cooldown (rate limit / Cloudflare challenge) isn't this job's
+        // fault — wait it out and retry instead of marking every in-flight job failed.
+        // Check the live cooldown state (not just error.retryInMs) so the job that
+        // *triggered* the cooldown also gets a retry, not just the ones queued behind it.
+        const cooldownRemaining = (state.wikiCooldownUntil || 0) - Date.now();
+        if (cooldownRemaining > 0 && attempt < MAX_ICON_COOLDOWN_RETRIES) {
+          await retryWait(cooldownRemaining);
+          continue;
+        }
         failed.add(job.key);
         if (onResult) onResult(job, null, true);
+        console.warn(`[PoE2Dire] Wiki icon lookup failed for "${job.title}" (${job.kind}):`, error);
+        return;
       }
-    });
-
-    return { found, failed };
+    }
   }
 
   async function queryPredictableFileIcons(endpoint, jobs, found, onResult) {
@@ -51,6 +70,7 @@
       try {
         json = await fetchImageInfo(endpoint, chunk);
       } catch (error) {
+        console.warn("[PoE2Dire] Predictable wiki icon batch lookup failed:", error);
         break;
       }
 
@@ -60,6 +80,8 @@
         images.set(normalWikiTitle(page.title), {
           url: imageUrl,
           source: `${endpoint.name} File`,
+          revisionTitle: page.title,
+          touchedAt: page.touched || null,
         });
       });
     }
@@ -120,7 +142,7 @@
     return fetchJsonWithRetry(wikiApiUrl(endpoint, {
       action: "query",
       titles: fileTitles.join("|"),
-      prop: "imageinfo",
+      prop: "imageinfo|info",
       iiprop: "url",
       iiurlwidth: String(CONFIG.iconThumbWidth),
     }));
@@ -149,6 +171,7 @@
           titles: chunk.join("|"),
         }));
       } catch (error) {
+        console.warn("[PoE2Dire] Wiki title existence check failed:", error);
         return null;
       }
 
@@ -171,6 +194,51 @@
     }
 
     return existing;
+  }
+
+  // Cheap staleness check for revision-tracked cache entries: fetches only the
+  // wiki's "touched" timestamp for each title (no image download) and compares
+  // it against what we had stored. Anything whose file actually changed gets
+  // dropped from `resolved` so it flows back through the normal fetch pipeline.
+  async function revalidateCachedIcons(endpoint, store, dueForRecheck, resolved) {
+    const titles = Array.from(new Set(dueForRecheck.map(({ entry }) => entry.revisionTitle)));
+
+    const touchedNow = new Map();
+    for (const chunk of chunks(titles, CONFIG.wikiBatchSize)) {
+      let json = null;
+      try {
+        json = await fetchJsonWithRetry(wikiApiUrl(endpoint, {
+          action: "query",
+          prop: "info",
+          titles: chunk.join("|"),
+        }));
+      } catch (error) {
+        console.warn("[PoE2Dire] Wiki icon revalidation check failed:", error);
+        continue;
+      }
+
+      Object.values(json.query?.pages || {}).forEach((page) => {
+        touchedNow.set(page.title, page.missing !== undefined ? null : page.touched || null);
+      });
+    }
+
+    for (const { job, key, entry } of dueForRecheck) {
+      if (!touchedNow.has(entry.revisionTitle)) continue;
+
+      const current = touchedNow.get(entry.revisionTitle);
+      if (current && current === entry.touchedAt) {
+        try {
+          await store.set(key, { ...entry, checkedAt: Date.now() });
+        } catch (error) {}
+        continue;
+      }
+
+      resolved.delete(job.key);
+      try {
+        await store.removeMany([key]);
+      } catch (error) {}
+      console.warn(`[PoE2Dire] Wiki icon changed since it was cached, refreshing "${job.title}".`);
+    }
   }
 
   function normalWikiTitle(title) {
@@ -237,7 +305,7 @@
     const json = await fetchJsonWithRetry(wikiApiUrl(endpoint, {
       action: "query",
       titles: iconFile,
-      prop: "imageinfo",
+      prop: "imageinfo|info",
       iiprop: "url",
     }));
     const pages = Object.values(json.query?.pages || {});
@@ -247,6 +315,8 @@
     return {
       url: page.imageinfo[0].url,
       source: `${endpoint.name} Cargo`,
+      revisionTitle: page.title,
+      touchedAt: page.touched || null,
     };
   }
 

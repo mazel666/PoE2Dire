@@ -31,11 +31,18 @@
       renderWikiStatusPill(document);
     };
 
-    const stored = await readStoredIconResults(store, jobs, storeKeys, resolved, knownMissing);
+    const dueForRecheck = await readStoredIconResults(store, jobs, storeKeys, resolved, knownMissing);
     applyResolvedIconResults(groups, resolved);
     applyMissingIconResults(groups, knownMissing);
     updateIconStatus();
     notifyIconUpdate(onUpdate, patch);
+
+    // Cheaply verify still-cached icons haven't changed on the wiki before trusting
+    // them for another stretch. Anything that turns out stale is dropped from
+    // `resolved` here, so the loop below naturally re-fetches it like any other job.
+    if (dueForRecheck.length) {
+      await revalidateCachedIcons(endpoints[0], store, dueForRecheck, resolved);
+    }
 
     for (let endpointIndex = 0; endpointIndex < endpoints.length; endpointIndex += 1) {
       const endpoint = endpoints[endpointIndex];
@@ -51,17 +58,20 @@
           applyResolvedIconResults(groups, new Map([[job.key, image]]));
           updateIconStatus();
           notifyIconUpdate(onUpdate, patch);
+          persistIconResult(store, storeKeys.get(job.key), job, image);
           return;
         }
 
         if (!isLastEndpoint) return;
 
         if (failed) {
+          // Deliberately not cached: a transient failure should be retried next visit.
           lookupFailed.add(job.key);
           applyDefaultIconResults(groups, new Set([job.key]));
         } else {
           knownMissing.add(job.key);
           applyMissingIconResults(groups, new Set([job.key]));
+          persistIconResult(store, storeKeys.get(job.key), job, null);
         }
         updateIconStatus();
         notifyIconUpdate(onUpdate, patch);
@@ -71,7 +81,13 @@
     }
 
     applyIconResults(groups, resolved, jobs, lookupFailed);
-    await writeStoredIconResults(store, jobs, storeKeys, stored, resolved, lookupFailed);
+
+    if (lookupFailed.size) {
+      const failedTitles = jobs
+        .filter((job) => lookupFailed.has(job.key))
+        .map((job) => `${job.title} (${job.kind})`);
+      console.warn(`[PoE2Dire] Couldn't load ${lookupFailed.size} wiki icon(s):`, failedTitles);
+    }
 
     state.wikiDone = true;
     status.done = true;

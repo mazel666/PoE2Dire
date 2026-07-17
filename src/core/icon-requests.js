@@ -13,7 +13,7 @@
       const response = await fetchJsonThroughQueue(url, priority);
       if (response.ok) return response.json;
 
-      if (response.cfMitigated === "challenge") {
+      if (response.cfMitigated === "challenge" || isBlockedNonJsonResponse(response)) {
         startWikiCooldown(CONFIG.network.challengeCooldownMs, "challenge");
         throw wikiRequestError(response);
       }
@@ -50,6 +50,17 @@
     if (until <= (state.wikiCooldownUntil || 0)) return;
     state.wikiCooldownUntil = until;
     state.wikiCooldownReason = reason;
+    const seconds = Math.round((until - Date.now()) / 1000);
+    console.warn(`[PoE2Dire] Wiki cooldown started (${reason}), pausing wiki requests for ~${seconds}s.`);
+  }
+
+  // The wiki API always sends format=json, so a successful (2xx) response that
+  // isn't JSON means something intercepted the request before it reached MediaWiki
+  // (Cloudflare interstitial, WAF block page, etc.) — treat it as a block signal
+  // even when it doesn't carry a recognizable cf-mitigated header, since that
+  // header isn't reliably present on every kind of block page.
+  function isBlockedNonJsonResponse(response) {
+    return response?.status === 415;
   }
 
   function wikiRequestError(response) {
@@ -60,7 +71,7 @@
       : statusText || "Network Error";
     const error = new Error(label);
     error.status = status;
-    if (response?.cfMitigated === "challenge") error.challenged = true;
+    if (response?.cfMitigated === "challenge" || isBlockedNonJsonResponse(response)) error.challenged = true;
     if (status === 429) error.rateLimited = true;
     return error;
   }
@@ -88,10 +99,19 @@
     drainWikiRequestQueue();
   }
 
+  // A perfectly-regular request cadence is itself a bot signal to Cloudflare —
+  // randomizing on top of the floor keeps every gap >= minRequestIntervalMs while
+  // avoiding a metronome-exact pattern.
+  function nextWikiRequestIntervalMs() {
+    const base = CONFIG.network.minRequestIntervalMs;
+    const jitter = CONFIG.network.minRequestIntervalJitterMs || 0;
+    return base + Math.random() * jitter;
+  }
+
   function drainWikiRequestQueue() {
     const limit = Math.max(1, Number(CONFIG.wikiRequestConcurrency) || 1);
     while (activeWikiRequests < limit && wikiRequestQueue.length) {
-      const waitMs = lastWikiDispatchAt + CONFIG.network.minRequestIntervalMs - Date.now();
+      const waitMs = lastWikiDispatchAt + nextWikiRequestIntervalMs() - Date.now();
       if (waitMs > 0) {
         scheduleWikiDispatch(waitMs);
         return;

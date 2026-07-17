@@ -205,7 +205,10 @@
 
   function tooltipErrorText(details) {
     if (details?.challenged) {
-      return "Wiki is overwhelmed, try again in a minute.";
+      // A Cloudflare interactive challenge can't be solved by a background fetch —
+      // only a human opening the wiki directly can clear it. Hovering again won't help,
+      // unlike the rateLimited case below, so don't tell the user to just retry.
+      return "Wiki wants to verify you're human — see the status indicator to open it.";
     }
     if (details?.rateLimited) {
       const seconds = Math.ceil((details.retryInMs || 0) / 1000);
