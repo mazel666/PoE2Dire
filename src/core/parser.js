@@ -7,7 +7,9 @@
     "Monster Changes": "Monster Updates",
   };
 
-  const ENTITY_SECTION_PATTERN = /Ascendancy|Skill|Support|Unique|Item|Monster|Passive|アセンダンシー|スキル|サポート|ユニーク|アイテム|モンスター|パッシブ/i;
+  // "ジェム" (Gem) covers sections like "ヴァールジェムの変更" (Vaal Gem Changes) —
+  // GGG's JP notes don't always say "スキル" for skill/support gem sections.
+  const ENTITY_SECTION_PATTERN = /Ascendancy|Skill|Support|Unique|Item|Monster|Passive|アセンダンシー|スキル|サポート|ユニーク|アイテム|モンスター|パッシブ|ジェム/i;
 
   function parsePatch(tokens) {
     const titleToken = tokens.find((token) => /Content Update|Patch Notes|コンテンツアップデート|パッチノート/i.test(token.text));

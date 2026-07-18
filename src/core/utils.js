@@ -101,7 +101,7 @@
     if (/ascendancy|class|hero|アセンダンシー/i.test(text)) return "ascendancy";
     if (/passive|tree|notable|keystone|cluster|パッシブ/i.test(text)) return "passive";
     if (/support|サポート/i.test(text)) return "support";
-    if (/skill|ability|spell|attack|スキル/i.test(text)) return "skill";
+    if (/skill|ability|spell|attack|スキル|ジェム/i.test(text)) return "skill";
     if (/unique|item|rune|idol|currency|armour|weapon|ring|amulet|glove|boot|helmet|jewel|ユニーク|アイテム/i.test(text)) return "item";
     if (/monster|boss|enemy|delirium|breach|ritual|モンスター/i.test(text)) return "monster";
     if (/bug|fix|不具合|修正/i.test(text)) return "bug";
