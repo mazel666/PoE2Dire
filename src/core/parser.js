@@ -7,7 +7,9 @@
     "Monster Changes": "Monster Updates",
   };
 
-  const ENTITY_SECTION_PATTERN = /Ascendancy|Skill|Support|Unique|Item|Monster|Passive|Vaal Gem/i;
+  // "ジェム" (Gem) covers sections like "ヴァールジェムの変更" (Vaal Gem Changes) —
+  // GGG's JP notes don't always say "スキル" for skill/support gem sections.
+  const ENTITY_SECTION_PATTERN = /Ascendancy|Skill|Support|Unique|Item|Monster|Passive|Vaal Gem|アセンダンシー|スキル|サポート|ユニーク|アイテム|モンスター|パッシブ|ジェム/i;
 
   function parsePatch(tokens) {
     const titleToken = findTitleToken(tokens);
@@ -116,6 +118,7 @@
           currentGroup = findOrAddGroup(currentSection, ascendancyClass, token.image, token.text);
           currentGroup.iconKind = "ascendancy";
           currentGroup.wikiTitle = ascendancyClass;
+          currentGroup.wikiTitleResolved = true;
           continue;
         }
 
@@ -149,7 +152,19 @@
           : currentGroup || findOrAddGroup(currentSection, currentSection.title, token.image, token.text);
 
         targetGroup.items.push(changeItem(formatChange(token.text, targetGroup.title), token));
-        if (entity && !targetGroup.wikiTitle) targetGroup.wikiTitle = entity;
+        if (entity && !targetGroup.wikiTitleResolved) {
+          const wikiTitle = entityWikiTitle(token.text, entity);
+          if (wikiTitle) {
+            targetGroup.wikiTitle = wikiTitle;
+            targetGroup.wikiTitleResolved = true;
+
+            // addGroup() ran the display title through cleanTitle(), which strips
+            // parenthetical content — so a JP "ラベル(Name)" title lost its English
+            // part on creation. Put it back here now that we know both halves.
+            const leading = leadingParentheticalEntity(token.text);
+            if (leading) targetGroup.title = `${leading.label}(${leading.english})`;
+          }
+        }
       }
     }
 
@@ -242,7 +257,7 @@
   }
 
   function isAscendancySection(title) {
-    return /Ascendancy/i.test(title);
+    return /Ascendancy|アセンダンシー/i.test(title);
   }
 
   function isMainSection(token) {
@@ -255,11 +270,14 @@
       const topLevel = Math.min(...headings.map((token) => token.level));
       return headings.find((token) => token.level === topLevel);
     }
-    return tokens.find((token) => /Content Update|Patch Notes/i.test(token.text)) || null;
+    return tokens.find((token) => /Content Update|Patch Notes|コンテンツアップデート|パッチノート/i.test(token.text)) || null;
   }
 
   function documentPatchTitle() {
-    return cleanText(document.title.replace(/\s*-\s*[^-]*-\s*Path of Exile\s*$/i, ""));
+    // The JP forum's site-chrome title suffix isn't consistently in English
+    // ("- Forum - Path of Exile" vs a localized equivalent), so strip whatever
+    // sits between the page title and the trailing "Path of Exile" brand name.
+    return cleanText(document.title.replace(/\s*-\s*.+?\s*-\s*Path of Exile\s*$/i, ""));
   }
 
   function isPatchUpdateTitle(text) {
@@ -317,11 +335,68 @@
     return isEntitySection(sectionTitle) && Boolean(entity);
   }
 
+  // Japanese patch notes lead each entity's own line with the localized name
+  // glued directly to the English one, mirroring how English notes lead with
+  // "EntityName: description". Two separator shapes show up in practice:
+  //   "ラベル(EnglishName): 全ての..."   (parenthesized, terminator optional)
+  //   "ラベル-EnglishName: 全ての..."    (hyphenated, terminator required — there's
+  //                                       no closing bracket, so the terminator is
+  //                                       the only thing marking where the name
+  //                                       ends and the description starts)
+  // The "terminator" isn't always a colon — a line can instead flow straight into
+  // a sentence via a topic/subject particle, e.g. "ミニオンパクト-Minion Pactは
+  // リワークされ..." ("Minion Pact was reworked..."). We consume は/が the same way
+  // as a colon so the remaining text reads as a clean sentence.
+  //
+  // When either shape is at the very start of the line, we get both the real
+  // Japanese display name (for the card heading) and the English name (for wiki
+  // lookups) in one match, and formatChange() can strip the whole prefix.
+  //
+  // The label must contain a non-ASCII character in both cases — this is what
+  // distinguishes them from an English aside like "Fireball (unchanged):" or
+  // "0.85 (previously 0.75)", which are never glued directly to a Japanese label.
+  const LEADING_ENTITY_PATTERNS = [
+    /^\s*([^\s（(]{1,40})[（(]([A-Z][A-Za-z0-9' .\-]{1,60}?)[）)]\s*(?:[:：]|は|が)?\s*/,
+    /^\s*([^\s\-－]{1,40})[-－]([A-Z][A-Za-z0-9' .\-]{1,60}?)\s*(?:[:：]|は|が)\s*/,
+  ];
+
+  function leadingParentheticalEntity(text) {
+    const value = String(text || "");
+    for (const pattern of LEADING_ENTITY_PATTERNS) {
+      const match = value.match(pattern);
+      if (!match || !/[^\x00-\x7f]/.test(match[1])) continue;
+      const english = validEntityTitle(match[2]);
+      if (!english) continue;
+      return { label: cleanText(match[1]), english, prefixLength: match[0].length };
+    }
+    return null;
+  }
+
+  // Same idea but not anchored to the start of the line, for entities mentioned
+  // mid-sentence without a leading label. Requires the character right before
+  // "(" to be non-ASCII for the same reason as above.
+  const PARENTHETICAL_ENGLISH_NAME = /[^\s\x00-\x7f][（(]([A-Z][A-Za-z0-9' .\-]{1,60}?)[）)]/;
+
+  function extractParentheticalEnglishName(text) {
+    const match = String(text || "").match(PARENTHETICAL_ENGLISH_NAME);
+    return match ? validEntityTitle(match[1]) : "";
+  }
+
+  // The *display* title for an entity — prefers the Japanese label when the
+  // leading "ラベル(Name)" shape is present, since that's what a JP reader
+  // actually recognizes. entityWikiTitle() below recovers the English name
+  // separately for wiki lookups.
   function extractEntityTitle(text, sectionTitle) {
     if (isAscendancySection(sectionTitle)) {
       const ascendancy = validAscendancyClassTitle(text);
       if (ascendancy) return ascendancy;
     }
+
+    const leading = leadingParentheticalEntity(text);
+    if (leading) return leading.label;
+
+    const parenthetical = extractParentheticalEnglishName(text);
+    if (parenthetical) return parenthetical;
 
     const patterns = [
       /^New Unique item:\s*(.+)$/i,
@@ -351,6 +426,20 @@
     return "";
   }
 
+  // The English name to actually query the wiki with. Re-checks the same
+  // parenthetical shapes extractEntityTitle() used, since that function may have
+  // returned the Japanese label instead of the English name; falls back to the
+  // display title itself for plain-English patch notes with no bracket at all.
+  function entityWikiTitle(text, displayTitle) {
+    const leading = leadingParentheticalEntity(text);
+    if (leading) return leading.english;
+
+    const parenthetical = extractParentheticalEnglishName(text);
+    if (parenthetical) return parenthetical;
+
+    return displayTitle;
+  }
+
   function validEntityTitle(value) {
     const title = cleanTitle(value);
     if (!title || title.length > 64) return "";
@@ -362,12 +451,16 @@
 
   function formatChange(text, title) {
     let change = cleanText(text);
-    if (title && change.toLowerCase().startsWith(title.toLowerCase() + ":")) {
+
+    const leading = leadingParentheticalEntity(change);
+    if (leading) {
+      change = cleanText(change.slice(leading.prefixLength));
+    } else if (title && change.toLowerCase().startsWith(title.toLowerCase() + ":")) {
       change = cleanText(change.slice(title.length + 1));
-    }
-    if (/^The /i.test(change) && title && change.toLowerCase().startsWith(("The " + title).toLowerCase())) {
+    } else if (/^The /i.test(change) && title && change.toLowerCase().startsWith(("The " + title).toLowerCase())) {
       change = cleanText(change.slice(title.length + 4));
     }
+
     return sentenceCaseChange(stripLeadingEntityDescriptor(change));
   }
 

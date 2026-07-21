@@ -98,13 +98,13 @@
   }
 
   function classify(text) {
-    if (/ascendancy|class|hero/i.test(text)) return "ascendancy";
-    if (/passive|tree|notable|keystone|cluster/i.test(text)) return "passive";
-    if (/support/i.test(text)) return "support";
-    if (/skill|ability|spell|attack|vaal gem/i.test(text)) return "skill";
-    if (/unique|item|rune|idol|currency|armour|weapon|ring|amulet|glove|boot|helmet|jewel/i.test(text)) return "item";
-    if (/monster|boss|enemy|delirium|breach|ritual/i.test(text)) return "monster";
-    if (/bug|fix/i.test(text)) return "bug";
+    if (/ascendancy|class|hero|アセンダンシー/i.test(text)) return "ascendancy";
+    if (/passive|tree|notable|keystone|cluster|パッシブ/i.test(text)) return "passive";
+    if (/support|サポート/i.test(text)) return "support";
+    if (/skill|ability|spell|attack|vaal gem|スキル|ジェム/i.test(text)) return "skill";
+    if (/unique|item|rune|idol|currency|armour|weapon|ring|amulet|glove|boot|helmet|jewel|ユニーク|アイテム/i.test(text)) return "item";
+    if (/monster|boss|enemy|delirium|breach|ritual|モンスター/i.test(text)) return "monster";
+    if (/bug|fix|不具合|修正/i.test(text)) return "bug";
     return "general";
   }
 
@@ -119,14 +119,14 @@
   }
 
   function classifyLocalEntity(text) {
-    if (/ascendancy|hero/i.test(text)) return "ascendancy";
-    if (/support/i.test(text)) return "support";
+    if (/ascendancy|hero|アセンダンシー/i.test(text)) return "ascendancy";
+    if (/support|サポート/i.test(text)) return "support";
     if (/timeless jewel notable|\bnotable\b.*\bpassive\b|\bkeystone\b.*\bpassive\b|cluster jewel notable|\bclusters?\b/i.test(text)) return "passive";
-    if (/skill gem|support gem|ability|spell|attack/i.test(text)) return "skill";
-    if (/unique|item|rune|idol|currency|armour|weapon|ring|amulet|glove|boot|helmet|jewel|flask|belt|talisman|bow|mace|sword|axe|staff|wand|quiver|shield/i.test(text)) return "item";
-    if (/passive|tree|notable|keystone/i.test(text)) return "passive";
-    if (/monster|boss|enemy|delirium|breach|ritual/i.test(text)) return "monster";
-    if (/bug|fix/i.test(text)) return "bug";
+    if (/skill gem|support gem|ability|spell|attack|スキル|ジェム/i.test(text)) return "skill";
+    if (/unique|item|rune|idol|currency|armour|weapon|ring|amulet|glove|boot|helmet|jewel|flask|belt|talisman|bow|mace|sword|axe|staff|wand|quiver|shield|ユニーク|アイテム/i.test(text)) return "item";
+    if (/passive|tree|notable|keystone|パッシブ/i.test(text)) return "passive";
+    if (/monster|boss|enemy|delirium|breach|ritual|モンスター/i.test(text)) return "monster";
+    if (/bug|fix|不具合|修正/i.test(text)) return "bug";
     return "general";
   }
 
