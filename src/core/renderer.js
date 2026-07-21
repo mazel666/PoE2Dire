@@ -497,7 +497,60 @@
     } else {
       box.textContent = iconInitials(group.title);
     }
-    return box;
+
+    const pageUrl = wikiPageUrl(group);
+    if (!pageUrl) return box;
+
+    const link = el("a", "pdp-icon-link", box);
+    link.href = pageUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    return link;
+  }
+
+  // Only linkable once the group actually has a resolved icon — "missing"/"default"
+  // sourced groups (falling back to CONFIG.fallbackIcon) have no confirmation any
+  // page exists under this title, so those correctly produce no link.
+  //
+  // A real icon can come from either the wiki itself (any of several lookup paths
+  // in wiki-icon-source.js, whose group.source text varies: "PoE2Wiki", "PoE2Wiki
+  // File", "PoE2Wiki Cargo", ...) or from the PoEDB-mirrored ENTITY_ICON_DATA
+  // fallback (parser.js sets group.source = "PoEDB" and resolves the icon
+  // synchronously, before any wiki fetch, for entities PoEDB already has —
+  // this covers most skill gems). Both are equally good evidence the entity is
+  // real, so prefer the icon's own origin when it happens to be a wiki host (most
+  // accurate), and fall back to this patch's preferred wiki (state.wikiEndpoints,
+  // set in index.js) for PoEDB-sourced icons, which aren't hosted on a wiki origin
+  // at all.
+  function wikiPageUrl(group) {
+    if (!group.wikiTitle || !group.icon) return "";
+
+    const endpoint = wikiEndpointForIcon(group.icon) || state.wikiEndpoints?.[0];
+    if (!endpoint) return "";
+
+    try {
+      const origin = new URL(endpoint.api).origin;
+      return `${origin}/wiki/${encodeURIComponent(group.wikiTitle.replace(/ /g, "_"))}`;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function wikiEndpointForIcon(iconUrl) {
+    let iconOrigin = "";
+    try {
+      iconOrigin = new URL(iconUrl).origin;
+    } catch (error) {
+      return null;
+    }
+
+    return CONFIG.apiEndpoints.find((candidate) => {
+      try {
+        return new URL(candidate.api).origin === iconOrigin;
+      } catch (error) {
+        return false;
+      }
+    }) || null;
   }
 
   function setIconImageSrc(img, box, title, icon, fallbackIcon, finalClass) {

@@ -206,6 +206,18 @@
   font-weight: 800;
 }
 
+.pdp-icon-link {
+  /* Keeps .pdp-icon as the actual grid child of .pdp-group — the anchor itself
+     generates no box, so it doesn't disturb the grid sizing/placement. */
+  display: contents;
+  cursor: pointer;
+}
+
+.pdp-icon-link:hover .pdp-icon,
+.pdp-icon-link:focus-visible .pdp-icon {
+  box-shadow: 0 .25rem .6rem rgba(0, 0, 0, .4), 0 0 0 2px rgba(241, 70, 46, .72);
+}
+
 @keyframes pdp-scroll-breathe {
   0%,
   100% {
