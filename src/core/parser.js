@@ -7,9 +7,12 @@
     "Monster Changes": "Monster Updates",
   };
 
-  // "ジェム" (Gem) covers sections like "ヴァールジェムの変更" (Vaal Gem Changes) —
-  // GGG's JP notes don't always say "スキル" for skill/support gem sections.
-  const ENTITY_SECTION_PATTERN = /Ascendancy|Skill|Support|Unique|Item|Monster|Passive|Vaal Gem|アセンダンシー|スキル|サポート|ユニーク|アイテム|モンスター|パッシブ|ジェム/i;
+  // "ヴァールジェム" (Vaal Gem) covers "ヴァールジェムの変更" (Vaal Gem Changes) — GGG's
+  // JP notes don't always say "スキル" for that section. Must stay as the specific
+  // compound rather than bare "ジェム" (gem), which also matches non-entity sections
+  // like "ジェムソケットの変更" (Gem Socket Changes) that the English pattern (which
+  // only has the specific "Vaal Gem", not bare "Gem") never treats as an entity list.
+  const ENTITY_SECTION_PATTERN = /Ascendancy|Skill|Support|Unique|Item|Monster|Passive|Vaal Gem|アセンダンシー|スキル|サポート|ユニーク|アイテム|モンスター|パッシブ|ヴァールジェム/i;
 
   function parsePatch(tokens) {
     const titleToken = findTitleToken(tokens);
@@ -122,23 +125,39 @@
           continue;
         }
 
-        const annotated = findAnnotatedEntity(token.text);
+        // findAnnotatedEntity()/findNamedEntity() (entity-names.js) have no notion of
+        // whether a line is an itemized entity change or just flowing prose — they'll
+        // pull a card out of any matching name anywhere in the text. English has no
+        // "www" entry in ENTITY_NAME_DATA and no "ラベル(EnglishName)" bracket
+        // convention, so both are permanently inert there, and English sections stay
+        // together unless the older isEntitySection()-gated extraction below splits
+        // them. On the JP forum both mechanisms ARE active, so left unrestricted they
+        // turned narrative sections like "Mercenaries of Trarthus as a Core League"
+        // into a card per incidentally-named area/item (e.g. "神の杖(The Sceptre of
+        // God)") instead of staying one prose block like the English version. Scope
+        // them to sections already recognized as itemized entity listings, matching
+        // the older JP-only extraction's own gating.
+        const extractNamedEntities = !isJapaneseForumPage() || isEntitySection(currentSection.title);
+
+        const annotated = extractNamedEntities ? findAnnotatedEntity(token.text) : null;
         if (annotated) {
           currentGroup = findOrAddGroup(currentSection, annotated.localized, token.image, token.text);
           currentGroup.iconKind = knownEntityKind(annotated.title, entityNames);
           currentGroup.wikiTitle = annotated.title;
           currentGroup.entity = true;
           currentGroup.items.push(changeItem(formatChange(token.text, currentGroup.title), token));
+          currentGroup.title = withJapaneseEnglishSuffix(annotated.localized, annotated.title);
           continue;
         }
 
-        const named = findNamedEntity(token.text, entityNames);
+        const named = extractNamedEntities ? findNamedEntity(token.text, entityNames) : null;
         if (named) {
           currentGroup = findOrAddGroup(currentSection, named.localized, token.image, token.text);
           currentGroup.iconKind = named.kind;
           currentGroup.wikiTitle = named.title;
           currentGroup.entity = true;
           currentGroup.items.push(changeItem(formatChange(token.text, currentGroup.title), token));
+          currentGroup.title = withJapaneseEnglishSuffix(named.localized, named.title);
           continue;
         }
 
@@ -333,6 +352,20 @@
 
   function shouldSplitEntry(sectionTitle, entity) {
     return isEntitySection(sectionTitle) && Boolean(entity);
+  }
+
+  // findAnnotatedEntity()/findNamedEntity() (entity-names.js) are shared across
+  // every supported forum language and only keep the bare localized label as the
+  // display title. JP readers expect the English name alongside it though,
+  // matching how GGG's own JP notes present entities — so pair them back up
+  // here on the JP forum specifically (same subdomain check entityNamesFor()
+  // uses), so other language forums keep upstream's bare-label behavior.
+  function withJapaneseEnglishSuffix(localized, english) {
+    return isJapaneseForumPage() ? `${localized}(${english})` : localized;
+  }
+
+  function isJapaneseForumPage() {
+    return String(location.hostname || "").split(".")[0] === "jp";
   }
 
   // Japanese patch notes lead each entity's own line with the localized name

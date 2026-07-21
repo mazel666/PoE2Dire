@@ -74,7 +74,7 @@
     if (/\b(?:are|is|can|has|have|now|was|were|be|being|an item)$/i.test(group.wikiTitle)) return false;
     if (!group.wikiTitle || group.wikiTitle.length > 64) return false;
     if (group.items.length > 20) return false;
-    return !/changes|updates|league|endgame|content|features|passive tree/i.test(group.wikiTitle);
+    return !/changes|updates|league|endgame|content|features|passive tree|変更|更新|改善|リーグ|エンドゲーム|コンテンツ|特徴|パッシブツリー/i.test(group.wikiTitle);
   }
 
   function strongerIconKind(current, next) {
