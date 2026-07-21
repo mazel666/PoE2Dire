@@ -150,7 +150,10 @@
         const extractNamedEntities = !isJapaneseForumPage()
           || (isEntitySection(currentSection.title) && !isAscendancySection(currentSection.title));
 
-        const annotated = extractNamedEntities ? findAnnotatedEntity(token.text) : null;
+        const annotatedMatch = extractNamedEntities ? findAnnotatedEntity(token.text) : null;
+        const annotated = annotatedMatch && isTrustedLeadingMatch(token.text, annotatedMatch.localized)
+          ? annotatedMatch
+          : null;
         if (annotated) {
           currentGroup = findOrAddGroup(currentSection, annotated.localized, token.image, token.text);
           currentGroup.iconKind = knownEntityKind(annotated.title, entityNames);
@@ -161,7 +164,8 @@
           continue;
         }
 
-        const named = extractNamedEntities ? findNamedEntity(token.text, entityNames) : null;
+        const namedMatch = extractNamedEntities ? findNamedEntity(token.text, entityNames) : null;
+        const named = namedMatch && isTrustedLeadingMatch(token.text, namedMatch.localized) ? namedMatch : null;
         if (named) {
           currentGroup = findOrAddGroup(currentSection, named.localized, token.image, token.text);
           currentGroup.iconKind = named.kind;
@@ -390,6 +394,24 @@
     return String(location.hostname || "").split(".")[0] === "jp";
   }
 
+  // findAnnotatedEntity()/findNamedEntity() return the FIRST match found anywhere
+  // in the line, with no preference for the line's actual subject. A JP line's
+  // real subject can use the hyphenated "ラベル-EnglishName" form (which
+  // findAnnotatedEntity doesn't recognize, and which needs an immediate
+  // terminator findNamedEntity has no notion of either), while a skill/effect
+  // mentioned later in the same sentence uses parens or a known database name —
+  // e.g. "ドリヤニの妄想-Doryani's Delusionユニークブーツは…ピュリティオブ
+  // ライトニング(Purity of Lightning)を…" would otherwise become a "Purity of
+  // Lightning" card instead of Doryani's Delusion. Only trust a match found near
+  // the start of the line (same ~40-char cap LEADING_ENTITY_PATTERNS' label group
+  // uses), on the JP forum only — upstream's behavior for every other language is
+  // unaffected.
+  function isTrustedLeadingMatch(text, localized) {
+    if (!isJapaneseForumPage()) return true;
+    const index = String(text || "").indexOf(localized);
+    return index >= 0 && index <= 40;
+  }
+
   // Japanese patch notes lead each entity's own line with the localized name
   // glued directly to the English one, mirroring how English notes lead with
   // "EntityName: description". Two separator shapes show up in practice:
@@ -410,19 +432,52 @@
   // The label must contain a non-ASCII character in both cases — this is what
   // distinguishes them from an English aside like "Fireball (unchanged):" or
   // "0.85 (previously 0.75)", which are never glued directly to a Japanese label.
+  // Replica-variant uniques add a THIRD shape: the JP label carries its own
+  // "(レプリカ)" qualifier before the real English-name parenthetical, e.g.
+  // "トゥルフォール(レプリカ)(Replica Tulfall)は..." — the optional named group
+  // below captures that qualifier so the required group still lands on the
+  // actual English name.
+  //
+  // The hyphenated shape has no closing bracket, so unlike the parenthesized
+  // shape above, its english-name group is greedy rather than lazy: greedy lets
+  // it consume every remaining Latin/digit/space character before naturally
+  // stopping at the JP continuation (there's nothing else to anchor on), so the
+  // terminator can stay optional here too — e.g. "ドリヤニの妄想-Doryani's
+  // Delusionユニークブーツは…" needs no terminator between "Delusion" and
+  // "ユニーク" for this to still land on "Doryani's Delusion".
+  //
+  // Both labels exclude 「」 (JP quotation marks): a quoted entity mentioned
+  // mid-sentence, e.g. "ウィッチの開始地点の北東に「アーケインの節約-Arcane
+  // Conservation」クラスターを追加しました" ("Added a cluster containing
+  // 'Arcane Conservation' to the northeast of the Witch's start..."), would
+  // otherwise have its entire descriptive prefix swallowed as the "label"
+  // (regex is ^-anchored, and nothing else stops it before the hyphen) —
+  // excluding 「」 makes that prefix fail to match at all, same as English
+  // not treating this as the line's leading entity either.
   const LEADING_ENTITY_PATTERNS = [
-    /^\s*([^\s（(]{1,40})[（(]([A-Z][A-Za-z0-9' .\-]{1,60}?)[）)]\s*(?:[:：]|は|が)?\s*/,
-    /^\s*([^\s\-－]{1,40})[-－]([A-Z][A-Za-z0-9' .\-]{1,60}?)\s*(?:[:：]|は|が)\s*/,
+    /^\s*(?<label>[^\s（(「」]{1,40})(?:[（(](?<qualifier>[^A-Za-z\s（()）]{1,20})[）)])?[（(](?<english>[A-Z][A-Za-z0-9' .\-]{1,60}?)[）)]\s*(?:[:：]|は|が)?\s*/,
+    /^\s*(?<label>[^\s\-－「」]{1,40})[-－](?<english>[A-Z][A-Za-z0-9' .\-]{1,60})\s*(?:[:：]|は|が)?\s*/,
   ];
 
   function leadingParentheticalEntity(text) {
     const value = String(text || "");
     for (const pattern of LEADING_ENTITY_PATTERNS) {
       const match = value.match(pattern);
-      if (!match || !/[^\x00-\x7f]/.test(match[1])) continue;
-      const english = validEntityTitle(match[2]);
+      if (!match || !/[^\x00-\x7f]/.test(match.groups.label)) continue;
+      const english = validEntityTitle(match.groups.english);
       if (!english) continue;
-      return { label: cleanText(match[1]), english, prefixLength: match[0].length };
+      const label = cleanText(match.groups.label);
+      const qualifier = match.groups.qualifier ? cleanText(match.groups.qualifier) : "";
+      return {
+        label,
+        // Distinct from `label` only when a qualifier is present (e.g. a Replica
+        // variant) — callers that need a group-matching key distinct from its
+        // non-Replica counterpart use this; callers that just want the clean
+        // display label (paired with `english` as "label(english)") use `label`.
+        entityKey: qualifier ? `${label}-${qualifier}` : label,
+        english,
+        prefixLength: match[0].length,
+      };
     }
     return null;
   }
@@ -447,8 +502,15 @@
       if (ascendancy) return ascendancy;
     }
 
+    // entityKey (not label) so a Replica variant's own group-matching key differs
+    // from its non-Replica counterpart's — e.g. "トゥコハマの要塞(レプリカ)
+    // (Replica Tukohama's Fortress)" must land in its own card, not merge into
+    // whatever "トゥコハマの要塞(Tukohama's Fortress)" card already exists. The
+    // display title stays clean either way: the wikiTitle-resolution step below
+    // rewrites it from `leading.label`/`leading.english` directly, which never
+    // include the qualifier.
     const leading = leadingParentheticalEntity(text);
-    if (leading) return leading.label;
+    if (leading) return leading.entityKey;
 
     const parenthetical = extractParentheticalEnglishName(text);
     if (parenthetical) return parenthetical;
