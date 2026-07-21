@@ -150,29 +150,40 @@
         const extractNamedEntities = !isJapaneseForumPage()
           || (isEntitySection(currentSection.title) && !isAscendancySection(currentSection.title));
 
+        // These two matches deliberately do NOT update currentGroup (unlike the
+        // ascendancyClass/heading/strong branches above, which persist it on
+        // purpose for their own continuation lines). Each li in a flat entity
+        // section is normally self-contained, and English never needs to worry
+        // about this at all (findAnnotatedEntity/findNamedEntity are inert
+        // there) — so if a *later*, unrelated li has no entity of its own, it
+        // must fall through to the section's general list below, not silently
+        // get attached to whatever entity the *previous* li happened to name.
+        // (Confirmed case: "ヤオマクの調和(Yaomac's Accord)…" followed by an
+        // unrelated "シンセシスユニークアイテムで…" line was landing inside the
+        // Yaomac's Accord card before this fix.)
         const annotatedMatch = extractNamedEntities ? findAnnotatedEntity(token.text) : null;
         const annotated = annotatedMatch && isTrustedLeadingMatch(token.text, annotatedMatch.localized)
           ? annotatedMatch
           : null;
         if (annotated) {
-          currentGroup = findOrAddGroup(currentSection, annotated.localized, token.image, token.text);
-          currentGroup.iconKind = knownEntityKind(annotated.title, entityNames);
-          currentGroup.wikiTitle = annotated.title;
-          currentGroup.entity = true;
-          currentGroup.items.push(changeItem(formatChange(token.text, currentGroup.title), token));
-          currentGroup.title = withJapaneseEnglishSuffix(annotated.localized, annotated.title);
+          const group = findOrAddGroup(currentSection, annotated.localized, token.image, token.text);
+          group.iconKind = knownEntityKind(annotated.title, entityNames);
+          group.wikiTitle = annotated.title;
+          group.entity = true;
+          group.items.push(changeItem(formatChange(token.text, group.title), token));
+          group.title = withJapaneseEnglishSuffix(annotated.localized, annotated.title);
           continue;
         }
 
         const namedMatch = extractNamedEntities ? findNamedEntity(token.text, entityNames) : null;
         const named = namedMatch && isTrustedLeadingMatch(token.text, namedMatch.localized) ? namedMatch : null;
         if (named) {
-          currentGroup = findOrAddGroup(currentSection, named.localized, token.image, token.text);
-          currentGroup.iconKind = named.kind;
-          currentGroup.wikiTitle = named.title;
-          currentGroup.entity = true;
-          currentGroup.items.push(changeItem(formatChange(token.text, currentGroup.title), token));
-          currentGroup.title = withJapaneseEnglishSuffix(named.localized, named.title);
+          const group = findOrAddGroup(currentSection, named.localized, token.image, token.text);
+          group.iconKind = named.kind;
+          group.wikiTitle = named.title;
+          group.entity = true;
+          group.items.push(changeItem(formatChange(token.text, group.title), token));
+          group.title = withJapaneseEnglishSuffix(named.localized, named.title);
           continue;
         }
 
