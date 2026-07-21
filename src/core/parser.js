@@ -137,7 +137,18 @@
         // God)") instead of staying one prose block like the English version. Scope
         // them to sections already recognized as itemized entity listings, matching
         // the older JP-only extraction's own gating.
-        const extractNamedEntities = !isJapaneseForumPage() || isEntitySection(currentSection.title);
+        //
+        // Ascendancy sections are excluded even though they ARE entity sections: the
+        // split ternary below already keeps every line for the current ascendancy
+        // class in one card (`currentGroup?.iconKind === "ascendancy" ... ? false`),
+        // e.g. so a notable/keystone named partway through a class's own description
+        // (e.g. "神秘の注入(Mystical Infusion)") stays part of that class's card
+        // instead of splitting into its own — same as English, where this mechanism
+        // is the ONLY thing governing ascendancy entries since annotated/named are
+        // inert. Letting annotated/named run here would bypass that safeguard with
+        // their own unconditional continue.
+        const extractNamedEntities = !isJapaneseForumPage()
+          || (isEntitySection(currentSection.title) && !isAscendancySection(currentSection.title));
 
         const annotated = extractNamedEntities ? findAnnotatedEntity(token.text) : null;
         if (annotated) {
@@ -177,11 +188,22 @@
             targetGroup.wikiTitle = wikiTitle;
             targetGroup.wikiTitleResolved = true;
 
-            // addGroup() ran the display title through cleanTitle(), which strips
-            // parenthetical content — so a JP "ラベル(Name)" title lost its English
-            // part on creation. Put it back here now that we know both halves.
-            const leading = leadingParentheticalEntity(token.text);
-            if (leading) targetGroup.title = `${leading.label}(${leading.english})`;
+            // Only rewrite the display title when this line is what actually
+            // named targetGroup (split true — a fresh or entity-matched group).
+            // When split is false we're still appending to a group that already
+            // has its own identity (e.g. the current ascendancy class's card,
+            // forced non-split above) — that title must stay put, same as
+            // English, where this same wikiTitle refinement never touches the
+            // display title. Without this guard, a notable/keystone named
+            // partway through an ascendancy's own description (e.g. "神秘の注入
+            // (Mystical Infusion)") would rename that class's whole card.
+            if (split) {
+              // addGroup() ran the display title through cleanTitle(), which strips
+              // parenthetical content — so a JP "ラベル(Name)" title lost its English
+              // part on creation. Put it back here now that we know both halves.
+              const leading = leadingParentheticalEntity(token.text);
+              if (leading) targetGroup.title = `${leading.label}(${leading.english})`;
+            }
           }
         }
       }
