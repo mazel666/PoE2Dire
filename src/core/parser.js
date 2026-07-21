@@ -487,7 +487,6 @@
         // display label (paired with `english` as "label(english)") use `label`.
         entityKey: qualifier ? `${label}-${qualifier}` : label,
         english,
-        prefixLength: match[0].length,
       };
     }
     return null;
@@ -579,16 +578,12 @@
 
   function formatChange(text, title) {
     let change = cleanText(text);
-
-    const leading = leadingParentheticalEntity(change);
-    if (leading) {
-      change = cleanText(change.slice(leading.prefixLength));
-    } else if (title && change.toLowerCase().startsWith(title.toLowerCase() + ":")) {
+    if (title && change.toLowerCase().startsWith(title.toLowerCase() + ":")) {
       change = cleanText(change.slice(title.length + 1));
-    } else if (/^The /i.test(change) && title && change.toLowerCase().startsWith(("The " + title).toLowerCase())) {
+    }
+    if (/^The /i.test(change) && title && change.toLowerCase().startsWith(("The " + title).toLowerCase())) {
       change = cleanText(change.slice(title.length + 4));
     }
-
     return sentenceCaseChange(stripLeadingEntityDescriptor(change));
   }
 
