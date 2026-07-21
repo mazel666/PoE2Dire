@@ -307,11 +307,16 @@
   // Japanese patch notes lead each entity's own line with the localized name
   // glued directly to the English one, mirroring how English notes lead with
   // "EntityName: description". Two separator shapes show up in practice:
-  //   "ラベル(EnglishName): 全ての..."   (parenthesized, colon optional)
-  //   "ラベル-EnglishName: 全ての..."    (hyphenated, colon required — there's
-  //                                       no closing bracket, so the colon is
+  //   "ラベル(EnglishName): 全ての..."   (parenthesized, terminator optional)
+  //   "ラベル-EnglishName: 全ての..."    (hyphenated, terminator required — there's
+  //                                       no closing bracket, so the terminator is
   //                                       the only thing marking where the name
   //                                       ends and the description starts)
+  // The "terminator" isn't always a colon — a line can instead flow straight into
+  // a sentence via a topic/subject particle, e.g. "ミニオンパクト-Minion Pactは
+  // リワークされ..." ("Minion Pact was reworked..."). We consume は/が the same way
+  // as a colon so the remaining text reads as a clean sentence.
+  //
   // When either shape is at the very start of the line, we get both the real
   // Japanese display name (for the card heading) and the English name (for wiki
   // lookups) in one match, and formatChange() can strip the whole prefix.
@@ -320,8 +325,8 @@
   // distinguishes them from an English aside like "Fireball (unchanged):" or
   // "0.85 (previously 0.75)", which are never glued directly to a Japanese label.
   const LEADING_ENTITY_PATTERNS = [
-    /^\s*([^\s（(]{1,40})[（(]([A-Z][A-Za-z0-9' .\-]{1,60}?)[）)]\s*[:：]?\s*/,
-    /^\s*([^\s\-－]{1,40})[-－]([A-Z][A-Za-z0-9' .\-]{1,60}?)\s*[:：]\s*/,
+    /^\s*([^\s（(]{1,40})[（(]([A-Z][A-Za-z0-9' .\-]{1,60}?)[）)]\s*(?:[:：]|は|が)?\s*/,
+    /^\s*([^\s\-－]{1,40})[-－]([A-Z][A-Za-z0-9' .\-]{1,60}?)\s*(?:[:：]|は|が)\s*/,
   ];
 
   function leadingParentheticalEntity(text) {
